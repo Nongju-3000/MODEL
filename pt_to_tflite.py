@@ -4,8 +4,11 @@ import tensorflow as tf
 from onnx_tf.backend import prepare
 from ultralytics import YOLO
 import os
+import numpy as np
+from PIL import Image
 
-
+pytorch_model_path = "best.pt"  # YOLO 모델 경로
+test_image_path = "test_image.jpg"  # 테스트 이미지 경로
 def infer_input_size(pytorch_model_path):
     """
     PyTorch 모델의 입력 크기를 자동으로 추론합니다.
@@ -19,8 +22,24 @@ def infer_input_size(pytorch_model_path):
     # YOLO 모델 로드
     model = YOLO(pytorch_model_path)
 
+    #print(model.model)
+
+    # 테스트 이미지 로드
+    image = Image.open(test_image_path).convert('RGB')
+    image = np.array(image)
+
+    # 모델에 이미지 전달
+    results = model.predict(source="test_image.jpg", save=False)  # test_image.jpg는 예측할 이미지 경로
+
+    # 결과 확인
+    for result in results:
+        print(f"Detected {len(result.boxes)} objects:")
+        for box in result.boxes:
+            print(f"Class: {box.cls}, Confidence: {box.conf}, Box: {box.xyxy}")
+
     # 입력 크기 추론
-    imgsz = model.model.yaml.get('imgsz', 640)  # 기본 입력 크기 640x640
+    imgsz = getattr(model.model, 'imgsz', 640)  # 기본 입력 크기 640x640
+    print(f"Default input size: {imgsz}")
     input_size = (1, 3, imgsz, imgsz)
 
     print(f"Inferred input size: {input_size}")
@@ -43,13 +62,28 @@ def pytorch_to_tflite_auto(pytorch_model_path, onnx_model_path, tf_model_path, t
     # Step 1: PyTorch → ONNX 변환
     print("Converting PyTorch model to ONNX format...")
     input_size = infer_input_size(pytorch_model_path)
-    model = YOLO(pytorch_model_path).model  # 모델의 PyTorch 객체 가져오기
-    model.eval()
+    model = YOLO(pytorch_model_path) # 모델의 PyTorch 객체 가져오기
+    #model.eval()
+#
+    #dummy_input = torch.randn(*input_size)  # 추론된 입력 크기 사용
+    #torch.onnx.export(
+    #    model,
+    #    dummy_input,
+    #    onnx_model_path,
+    #    export_params=True,
+    #    opset_version=11,
+    #    do_constant_folding=True,
+    #    input_names=["input"],  # 입력 노드 이름
+    #    output_names=["output_boxes", "output_scores", "output_classes"],  # 출력 노드 이름
+    #    dynamic_axes={
+    #        "input": {0: "batch_size"},
+    #        "output_boxes": {0: "batch_size"},
+    #        "output_scores": {0: "batch_size"},
+    #        "output_classes": {0: "batch_size"},
+    #    },
+    #)
 
-    dummy_input = torch.randn(*input_size)  # 추론된 입력 크기 사용
-    torch.onnx.export(model, dummy_input, onnx_model_path, export_params=True,
-                      opset_version=11, do_constant_folding=True,
-                      input_names=['input'], output_names=['output'])
+    model.export(format="onnx")
     print(f"ONNX model saved to {onnx_model_path}")
 
     # Step 2: ONNX → TensorFlow 변환
@@ -74,10 +108,10 @@ def pytorch_to_tflite_auto(pytorch_model_path, onnx_model_path, tf_model_path, t
 
 # 실행 예제
 if __name__ == "__main__":
-    pytorch_model_path = "best.pt"             # PyTorch 모델 경로
-    onnx_model_path = "best.onnx"              # ONNX 모델 저장 경로
-    tf_model_path = "best_tf"                  # TensorFlow 모델 저장 경로
-    tflite_model_path = "best.tflite"          # TFLite 모델 저장 경로
+    pytorch_model_path = "best.pt"  # PyTorch 모델 경로
+    onnx_model_path = "best.onnx"  # ONNX 모델 저장 경로
+    tf_model_path = "best_tf"  # TensorFlow 모델 저장 경로
+    tflite_model_path = "best.tflite"  # TFLite 모델 저장 경로
 
     # 경로 확인 및 디렉토리 생성
     os.makedirs(tf_model_path, exist_ok=True)
